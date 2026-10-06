@@ -132,6 +132,7 @@
           <button class="depth-tab" data-depth="15-30cm">15 - 30 sm</button>
           <button class="depth-tab" data-depth="30-60cm">30 - 60 sm</button>
           <button class="depth-tab" data-depth="60-100cm">60 - 100 sm</button>
+          <button class="depth-tab" data-depth="0-30cm" title="0-30 sm haydalma qatlam o'rtachasi">0 - 30 sm (Haydalma)</button>
           <button class="depth-tab" data-depth="all" title="Barcha qatlamlar jadvali"><i class="fa-solid fa-table"></i>
             Jadval</button>
         </div>
@@ -241,6 +242,49 @@
             <!-- Dinamik qo'shiladi -->
           </tbody>
         </table>
+      </div>
+
+      <!-- Ekinlar Mosligi va Tavsiyalar (Matematik Faziy-Kosinus va Libix Modeli) -->
+      <div class="crop-rec-card" id="cropRecCard">
+        <div class="crop-rec-header">
+          <div class="crop-rec-header-left">
+            <div class="crop-rec-icon"><i class="fa-solid fa-wheat-awn"></i></div>
+            <div>
+              <div class="crop-rec-title">Ekinlar Mosligi va Tavsiyalar</div>
+              <div class="crop-rec-subtitle" id="recDepthSubtitle">Tanlangan qatlam: 0–5 sm bo'yicha</div>
+            </div>
+          </div>
+          <div class="crop-rec-badge" id="recMethodBadge">Faziy-Kosinus</div>
+        </div>
+
+        <!-- Sho'rlanish va pH ogohlantirishlari -->
+        <div class="salinity-warning" id="salinityWarningBox" style="display: none;">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <div id="salinityWarningText"></div>
+        </div>
+
+        <!-- 0-30 sm Haydalma qatlam parametrlari -->
+        <div class="calc-factors-bar" id="calcFactorsBar">
+          <div class="factor-chip"><span class="factor-lbl">O'rtacha pH:</span> <strong id="calcPhVal">-</strong></div>
+          <div class="factor-chip"><span class="factor-lbl">Gumus:</span> <strong id="calcGumusVal">-</strong></div>
+          <div class="factor-chip"><span class="factor-lbl">Tekstura:</span> <strong id="calcTextureVal">-</strong></div>
+          <div class="factor-chip"><span class="factor-lbl">Vaznlar:</span> <strong>pH 0.4 / Gumus 0.3 / Tek 0.3</strong></div>
+        </div>
+
+        <!-- Ekinlar ro'yxati -->
+        <div class="crop-list" id="cropList">
+          <div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 10px;">
+            Ekinlar mosligi hisoblanmoqda...
+          </div>
+        </div>
+
+        <!-- Qo'shimcha ekinlarni ko'rsatish tugmasi -->
+        <div class="crop-toggle-row">
+          <button id="btnToggleAllCrops" class="btn-text" type="button">
+            <span id="btnToggleText">Barcha 10 ta ekinni ko'rish</span>
+            <i class="fa-solid fa-chevron-down" id="btnToggleIcon"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Tuproq Mexanik Tarkibi (Granulometrik / Tekstura) -->

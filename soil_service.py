@@ -7,6 +7,7 @@ import math
 import hashlib
 from typing import Dict, Any, List, Optional
 import requests
+import ekin_tavsiya
 
 # Tuproq qatlamlari chuqurliklari
 DEPTHS = ["0-5cm", "5-15cm", "15-30cm", "30-60cm", "60-100cm"]
@@ -203,13 +204,55 @@ def interpret_soil_parameters(parsed_layers: Dict[str, Any]) -> Dict[str, Any]:
 
     texture_info = classify_texture(clay_val, sand_val, silt_val)
 
-    # Tavsiya etiladigan ekinlar
-    if texture_info["usda"] in ["Sandy loam", "Loamy sand", "Sand"]:
-      crops = "Meva-sabzavot, poliz ekinlari, uzumzorlar, erta pishar sabzavotlar, yeryong'oq."
-    elif texture_info["usda"] in ["Clay", "Silty clay"]:
-      crops = "G'alla (bug'doy, arpa), sholi, beda, kechki ekinlar."
-    else:
-      crops = "G'o'za (paxta), g'alla, makkajo'xori, mevali bog'lar, dukkakli ekinlar (mosh, no'xat, soya)."
+    # Matematik model (Faziy-kosinus va Libix modeli) bo'yicha ekinlar tavsiyasi
+    crops_suitability = []
+    profile_calc = {}
+    crop_warnings = []
+    recommendations_by_depth = {}
+
+    try:
+        # 1. 0-30 sm haydalma qatlam umumiy profili
+        recommendation_res = ekin_tavsiya.tavsiya_ber(parsed_layers)
+        crops_suitability = recommendation_res["natijalar_list"]
+        profile_calc = recommendation_res["profil_dict"]
+        crop_warnings = recommendation_res["profil"].ogohlantirishlar
+
+        recommendations_by_depth["0-30cm"] = {
+            "crop_suitability": crops_suitability,
+            "profile": profile_calc,
+            "warnings": crop_warnings,
+            "depth_label": "0–30 sm Haydalma qatlam",
+        }
+
+        # 2. Har bir chuqurlik qatlami uchun alohida tavsiyalar
+        for d in DEPTHS:
+            if d in parsed_layers:
+                rec_d = ekin_tavsiya.tavsiya_qatlam(parsed_layers[d], d)
+                recommendations_by_depth[d] = {
+                    "crop_suitability": rec_d["natijalar_list"],
+                    "profile": rec_d["profil_dict"],
+                    "warnings": rec_d["profil"].ogohlantirishlar,
+                    "depth_label": f"{d} qatlami",
+                }
+
+        # Eng yuqori mos keluvchi ekinlarni qisqa matn sifatida ham shakllantiramiz
+        top_crops = [
+            f"{c['ekin']} ({c['percent']}%)"
+            for c in crops_suitability
+            if c["s_final"] > 0.0
+        ][:4]
+        if top_crops:
+            crops = ", ".join(top_crops)
+        else:
+            crops = "Mos ekinlar topilmadi (pH yoki boshqa cheklovlar sababli rad etildi)"
+    except Exception as e:
+        crop_warnings = [f"Hisoblashda xatolik: {str(e)}"]
+        if texture_info["usda"] in ["Sandy loam", "Loamy sand", "Sand"]:
+            crops = "Meva-sabzavot, poliz ekinlari, uzumzorlar, erta pishar sabzavotlar, yeryong'oq."
+        elif texture_info["usda"] in ["Clay", "Silty clay"]:
+            crops = "G'alla (bug'doy, arpa), sholi, beda, kechki ekinlar."
+        else:
+            crops = "G'o'za (paxta), g'alla, makkajo'xori, mevali bog'lar, dukkakli ekinlar (mosh, no'xat, soya)."
 
     return {
         "ph": {
@@ -230,6 +273,10 @@ def interpret_soil_parameters(parsed_layers: Dict[str, Any]) -> Dict[str, Any]:
         },
         "texture": texture_info,
         "recommended_crops": crops,
+        "crop_suitability": crops_suitability,
+        "weighted_profile": profile_calc,
+        "crop_warnings": crop_warnings,
+        "recommendations_by_depth": recommendations_by_depth,
     }
 
 

@@ -10,6 +10,7 @@ let currentSoilData = null;
 let currentSelectedDepth = "0-5cm";
 let depthProfileChart = null;
 let textureChart = null;
+let showAllCrops = false;
 
 // Boshlang'ich koordinatalar (Toshkent / O'zbekiston markazi)
 let activeLat = 41.2995;
@@ -264,17 +265,47 @@ function renderSoilData(data) {
   renderDepthProfileChart(layers);
   renderTextureChart(layers[currentSelectedDepth]);
 
-  // 4. Agronomik Tavsiyalar
+  // 4. Agronomik Tavsiyalar va Ekinlar Mosligi Modeli
   renderAgronomicAdvice(assessment);
+  renderCropRecommendations(assessment, currentSelectedDepth);
 
   // 5. Barcha qatlamlar jadvali
   renderLayersTable(layers);
 }
 
 function updateDepthMetrics(depthKey) {
-  if (!currentSoilData || !currentSoilData.layers[depthKey]) return;
+  if (!currentSoilData) return;
 
-  const layer = currentSoilData.layers[depthKey];
+  let layer = currentSoilData.layers[depthKey];
+
+  // Agar 0-30cm (haydalma qatlam) bo'lsa
+  if (!layer && depthKey === "0-30cm") {
+    const wp = currentSoilData.assessment.weighted_profile || {};
+    const l0 = currentSoilData.layers["0-5cm"] || {};
+    const l1 = currentSoilData.layers["5-15cm"] || {};
+    const l2 = currentSoilData.layers["15-30cm"] || {};
+
+    const phVal = wp.ph || 7.5;
+    const somVal = wp.gumus || 1.2;
+    const socVal = Number((somVal / 1.724 * 10).toFixed(2));
+    const nVal = Number((((l0.nitrogen?.value || 1)*5 + (l1.nitrogen?.value || 1)*10 + (l2.nitrogen?.value || 1)*15) / 30).toFixed(2));
+    const cecVal = Number((((l0.cec?.value || 15)*5 + (l1.cec?.value || 15)*10 + (l2.cec?.value || 15)*15) / 30).toFixed(1));
+    const bdVal = Number((((l0.bdod?.value || 1.3)*5 + (l1.bdod?.value || 1.3)*10 + (l2.bdod?.value || 1.3)*15) / 30).toFixed(2));
+
+    layer = {
+      phh2o: { value: phVal },
+      gumus: { value: somVal },
+      soc: { value: socVal },
+      nitrogen: { value: nVal },
+      cec: { value: cecVal },
+      bdod: { value: bdVal },
+      clay: { value: wp.gil || 20 },
+      sand: { value: wp.qum || 40 },
+      silt: { value: wp.chang || 40 },
+    };
+  }
+
+  if (!layer) return;
 
   // pH
   const phVal = layer.phh2o ? layer.phh2o.value : "-";
@@ -363,6 +394,7 @@ function getDepthThickness(depthKey) {
   if (depthKey === "15-30cm") return 15;
   if (depthKey === "30-60cm") return 30;
   if (depthKey === "60-100cm") return 40;
+  if (depthKey === "0-30cm") return 30;
   return 20;
 }
 
@@ -533,6 +565,149 @@ function renderAgronomicAdvice(assessment) {
 }
 
 /* ==========================================================================
+   Ekinlar Mosligi va Tavsiyalar (PhD Faziy-Kosinus va Libix Modeli)
+   ========================================================================== */
+function renderCropRecommendations(assessment, depthKey) {
+  if (!assessment) return;
+
+  const activeDepth = depthKey || currentSelectedDepth || "0-5cm";
+  const byDepth = assessment.recommendations_by_depth || {};
+
+  // Agar 'all' (jadval) tanlangan bo'lsa, '0-30cm' ni ko'rsatamiz
+  const targetKey = (activeDepth === "all" || !byDepth[activeDepth]) ? "0-30cm" : activeDepth;
+  const depthData = byDepth[targetKey] || {
+    crop_suitability: assessment.crop_suitability || [],
+    profile: assessment.weighted_profile || {},
+    warnings: assessment.crop_warnings || [],
+    depth_label: "0–30 sm Haydalma qatlam",
+  };
+
+  const crops = depthData.crop_suitability || [];
+  const profile = depthData.profile || {};
+  const warnings = depthData.warnings || [];
+  const depthLabel = depthData.depth_label || targetKey;
+
+  // Qatlam sarlavhasi
+  const subTitle = document.getElementById("recDepthSubtitle");
+  if (subTitle) {
+    subTitle.textContent = `Tanlangan qatlam: ${depthLabel} bo'yicha`;
+  }
+
+  // 1. Tanlangan qatlam ko'rsatkichlari (pH, gumus, tekstura)
+  const calcPh = document.getElementById("calcPhVal");
+  const calcGumus = document.getElementById("calcGumusVal");
+  const calcText = document.getElementById("calcTextureVal");
+
+  if (calcPh && profile.ph !== undefined) calcPh.textContent = profile.ph.toFixed(2);
+  if (calcGumus && profile.gumus !== undefined) calcGumus.textContent = `${profile.gumus.toFixed(2)} %`;
+  if (calcText && profile.milliy_nom !== undefined) {
+    calcText.textContent = `${profile.milliy_nom} (${profile.milliy_sinf}-sinf)`;
+  }
+
+  // 2. Ogohlantirishlar (sho'rlanish, pH xavfi)
+  const warnBox = document.getElementById("salinityWarningBox");
+  const warnText = document.getElementById("salinityWarningText");
+  if (warnBox && warnText) {
+    if (warnings && warnings.length > 0) {
+      warnBox.style.display = "flex";
+      warnText.innerHTML = warnings.map(w => `<div>${w}</div>`).join("");
+    } else {
+      warnBox.style.display = "none";
+    }
+  }
+
+  // 3. Ekinlar ro'yxati
+  const container = document.getElementById("cropList");
+  if (!container) return;
+
+  if (crops.length === 0) {
+    container.innerHTML = `<div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px;">Ekinlar mosligi hisoblanmadi</div>`;
+    return;
+  }
+
+  // Nechtasi ko'rsatilsin?
+  const visibleCrops = showAllCrops ? crops : crops.slice(0, 4);
+
+  let html = "";
+  visibleCrops.forEach((c, idx) => {
+    let badgeClass = "badge-mod";
+    let fillClass = "fill-mod";
+    let badgeLabel = "O'rtacha";
+
+    if (c.status === "optimal") {
+      badgeClass = "badge-opt";
+      fillClass = "fill-opt";
+      badgeLabel = "Optimal";
+    } else if (c.status === "low") {
+      badgeClass = "badge-low";
+      fillClass = "fill-low";
+      badgeLabel = "Past";
+    } else if (c.status === "rejected" || c.s_final === 0) {
+      badgeClass = "badge-rej";
+      fillClass = "fill-rej";
+      badgeLabel = "Yaroqsiz";
+    }
+
+    const isRej = c.k_hard === 0 || c.s_final === 0;
+    const noteClass = isRej ? "crop-note rej" : "crop-note";
+    const noteIcon = isRej
+      ? '<i class="fa-solid fa-ban"></i>'
+      : '<i class="fa-solid fa-circle-check" style="color: var(--accent-emerald);"></i>';
+
+    const percentColor = c.s_final >= 0.8
+      ? "var(--accent-emerald)"
+      : (c.s_final > 0 ? "var(--accent-amber)" : "var(--text-muted)");
+
+    html += `
+      <div class="crop-item">
+        <div class="crop-item-top">
+          <div class="crop-name-group">
+            <span class="crop-rank">#${idx + 1}</span>
+            <span class="crop-name">${c.ekin}</span>
+          </div>
+          <div class="crop-score-group">
+            <span class="crop-percent" style="color: ${percentColor}">
+              ${c.percent}%
+            </span>
+            <span class="crop-badge ${badgeClass}">${badgeLabel}</span>
+          </div>
+        </div>
+        
+        <div class="crop-progress-bg">
+          <div class="crop-progress-fill ${fillClass}" style="width: ${c.percent}%;"></div>
+        </div>
+        
+        <div class="crop-item-bottom">
+          <span class="${noteClass}">
+            ${noteIcon} ${c.izoh || ""}
+          </span>
+          <div class="crop-meta-chips" title="Sim_w (Kosinus): ${c.sim}, \u039B (Libix min): ${c.libix}, S_final: ${c.s_final}">
+            <span>Sim: ${c.sim}</span>
+            <span>&Lambda;: ${c.libix}</span>
+            <span>S: ${c.s_final}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+
+  // Toggle button matnini yangilash
+  const btnToggleText = document.getElementById("btnToggleText");
+  const btnToggleIcon = document.getElementById("btnToggleIcon");
+  if (btnToggleText && btnToggleIcon) {
+    if (showAllCrops) {
+      btnToggleText.textContent = "Kamroq ko'rsatish (Top 4)";
+      btnToggleIcon.className = "fa-solid fa-chevron-up";
+    } else {
+      btnToggleText.textContent = `Barcha 10 ta ekinni ko'rish (${crops.length})`;
+      btnToggleIcon.className = "fa-solid fa-chevron-down";
+    }
+  }
+}
+
+/* ==========================================================================
    Qatlamlar Jadvali (Barcha Qatlamlar)
    ========================================================================== */
 function renderLayersTable(layers) {
@@ -581,12 +756,20 @@ function setupEventListeners() {
       if (depth === "all") {
         singleView.style.display = "none";
         tableView.style.display = "block";
+        if (currentSoilData && currentSoilData.assessment) {
+          renderCropRecommendations(currentSoilData.assessment, "0-30cm");
+        }
       } else {
         singleView.style.display = "grid";
         tableView.style.display = "none";
         updateDepthMetrics(depth);
-        if (currentSoilData && currentSoilData.layers[depth]) {
-          renderTextureChart(currentSoilData.layers[depth]);
+        if (currentSoilData) {
+          if (depth !== "0-30cm" && currentSoilData.layers[depth]) {
+            renderTextureChart(currentSoilData.layers[depth]);
+          }
+          if (currentSoilData.assessment) {
+            renderCropRecommendations(currentSoilData.assessment, depth);
+          }
         }
       }
     });
@@ -642,6 +825,17 @@ function setupEventListeners() {
   if (btnPrint) {
     btnPrint.addEventListener("click", () => {
       window.print();
+    });
+  }
+
+  // Ekinlar to'liq ro'yxatini ochish/yopish (Toggle)
+  const btnToggleAll = document.getElementById("btnToggleAllCrops");
+  if (btnToggleAll) {
+    btnToggleAll.addEventListener("click", () => {
+      showAllCrops = !showAllCrops;
+      if (currentSoilData && currentSoilData.assessment) {
+        renderCropRecommendations(currentSoilData.assessment, currentSelectedDepth);
+      }
     });
   }
 }
