@@ -262,15 +262,32 @@ function renderSoilData(data) {
   updateDepthMetrics(currentSelectedDepth);
 
   // 3. Grafiklarni yangilash
-  renderDepthProfileChart(layers);
-  renderTextureChart(layers[currentSelectedDepth]);
+  try {
+    renderDepthProfileChart(layers);
+    renderTextureChart(layers[currentSelectedDepth]);
+  } catch (err) {
+    console.error("Grafiklarni chizishda xatolik:", err);
+  }
 
   // 4. Agronomik Tavsiyalar va Ekinlar Mosligi Modeli
-  renderAgronomicAdvice(assessment);
-  renderCropRecommendations(assessment, currentSelectedDepth);
+  try {
+    renderAgronomicAdvice(assessment);
+  } catch (err) {
+    console.error("Agronomik tavsiyalarni chizishda xatolik:", err);
+  }
+
+  try {
+    renderCropRecommendations(assessment, currentSelectedDepth);
+  } catch (err) {
+    console.error("Ekinlar tavsiyasini chizishda xatolik:", err);
+  }
 
   // 5. Barcha qatlamlar jadvali
-  renderLayersTable(layers);
+  try {
+    renderLayersTable(layers);
+  } catch (err) {
+    console.error("Jadvalni to'ldirishda xatolik:", err);
+  }
 }
 
 function updateDepthMetrics(depthKey) {
